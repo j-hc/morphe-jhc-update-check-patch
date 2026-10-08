@@ -3,9 +3,15 @@ morphe-patcher = "1.13.0"
 #noinspection GradleDependency
 smali = "d92701d947"
 gson = "2.14.0"
+# morphe-patches-library = "1.5.0"
+# appcompat = "1.7.1"
+# annotation = "1.9.1"
 
 [libraries]
 gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
-# Gradle plugins adds the dependency during build, this declaration is here only for dependabot to provide updates.
-#noinspection UnusedVersionCatalogEntry
-morphe-patcher = { module = "app.morphe:morphe-patcher", version.ref = "morphe-patcher" }
+# morphe-extensions-library = { module = "app.morphe:morphe-extensions-library", version.ref = "morphe-patches-library" }
+# appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
+# annotation = { module = "androidx.annotation:annotation", version.ref = "annotation" }
+
+# [plugins]
+# android-library = { id = "com.android.library" }

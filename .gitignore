@@ -1,3 +1,6 @@
+morphe-data
+com.*
+
 ### Java template
 # Compiled class file
 *.class
