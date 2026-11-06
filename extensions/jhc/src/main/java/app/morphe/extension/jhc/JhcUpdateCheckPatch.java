@@ -273,8 +273,8 @@ public class JhcUpdateCheckPatch {
             String assetName = asset.optString("name");
 
             if (assetName.endsWith("-all.apk")) {}
-            else if (assetName.endsWith("-arm64-v8a.apk") && abi.equals("arm64-v8a")) {}
-            else if (assetName.endsWith("-arm-v7a.apk") && abi.equals("arm-v7a")) {}
+            else if (assetName.endsWith("-arm64-v8a.apk") && "arm64-v8a".equals(abi)) {}
+            else if (assetName.endsWith("-arm-v7a.apk") && "armeabi-v7a".equals(abi)) {}
             else continue;
 
             if (isCorrespondingAsset(assetName, packageNameParts)) {
