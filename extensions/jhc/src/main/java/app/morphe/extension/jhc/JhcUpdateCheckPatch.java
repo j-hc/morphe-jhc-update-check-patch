@@ -24,6 +24,8 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.Locale;
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.function.Consumer;
 
 @SuppressWarnings("unused")
@@ -254,7 +256,7 @@ public class JhcUpdateCheckPatch {
             return null;
         }
 
-        String[] packageNameParts = packageName.split("\\.");
+        String[] packageNameParts = packageName.toLowerCase().split("\\.");
         if (packageNameParts.length == 0) {
             Log.e(TAG, "?");
             return null;
@@ -297,6 +299,11 @@ public class JhcUpdateCheckPatch {
         return null;
     }
 
+    private static final Set<String> COMMON_PACKAGE_PARTS = new HashSet<>(Arrays.asList(
+            "com", "org", "net", "io", "app", "apps", "android", "google", "www", "co", "me",
+            "mobile", "main", "client", "lite", "free", "pro"
+    ));
+
     private static boolean isCorrespondingAsset(String assetName, String[] packageNameParts) {
         String assetNameLower = assetName.toLowerCase();
 
@@ -308,6 +315,12 @@ public class JhcUpdateCheckPatch {
         for (String part : packageNameParts) {
             if (part.equals("twitter")) return assetNameLower.startsWith("twitter-");
             if (part.equals("reddit")) return assetNameLower.startsWith("reddit-");
+        }
+
+        // fallback
+        for (String part : packageNameParts) {
+            if (COMMON_PACKAGE_PARTS.contains(part)) continue;
+            if (assetNameLower.startsWith(part + "-")) return true;
         }
 
         return false;
