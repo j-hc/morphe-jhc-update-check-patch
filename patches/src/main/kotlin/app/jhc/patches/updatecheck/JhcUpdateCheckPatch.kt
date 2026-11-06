@@ -2,10 +2,11 @@ package app.jhc.patches.updatecheck
 
 import app.morphe.patcher.Fingerprint
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
-import app.morphe.patcher.patch.Compatibility
+import app.morphe.patcher.patch.PatchException
 import app.morphe.patcher.patch.bytecodePatch
 import app.morphe.patcher.patch.resourcePatch
 import app.morphe.patcher.patch.stringOption
+import org.w3c.dom.Element
 
 internal object MainActivityOnCreateFingerprint : Fingerprint(
     definingClass = "/MainActivity;",
@@ -14,38 +15,33 @@ internal object MainActivityOnCreateFingerprint : Fingerprint(
     parameters = listOf("Landroid/os/Bundle;")
 )
 
-internal object MusicMainActivityOnCreateFingerprint : Fingerprint(
-    definingClass = "/MusicActivity;",
-    name = "onCreate",
-    returnType = "V",
-    parameters = listOf("Landroid/os/Bundle;")
-)
+private var launcherActivityName: String? = null
 
-internal object PhotosMainActivityOnCreateFingerprint : Fingerprint(
-    definingClass = "/HomeActivity;",
-    name = "onCreate",
-    returnType = "V",
-    parameters = listOf("Landroid/os/Bundle;")
-)
+private val FindLauncherActivityPatch = resourcePatch {
+    execute {
+        document("AndroidManifest.xml").use { doc ->
+            fun Element.names(tag: String) = getElementsByTagName(tag).let { l ->
+                (0 until l.length).map { (l.item(it) as Element).getAttribute("android:name") }
+            }
 
-private val COMPAT = arrayOf(
-    Compatibility(
-        name = "Twitter",
-        packageName = "com.twitter.android",
-    ),
-    Compatibility(
-        name = "YouTube",
-        packageName = "com.google.android.youtube",
-    ),
-    Compatibility(
-        name = "YT Music",
-        packageName = "com.google.android.apps.youtube.music",
-    ),
-    Compatibility(
-        name = "Photos",
-        packageName = "com.google.android.apps.photos",
-    )
-)
+            val nodes = doc.getElementsByTagName("activity")
+            for (i in 0 until nodes.length) {
+                val activity = nodes.item(i) as Element
+                val filters = activity.getElementsByTagName("intent-filter")
+                val isLauncher = (0 until filters.length).any {
+                    val f = filters.item(it) as Element
+                    "android.intent.action.MAIN" in f.names("action") &&
+                        "android.intent.category.LAUNCHER" in f.names("category")
+                }
+                if (isLauncher) {
+                    launcherActivityName = activity.getAttribute("android:name")
+                    return@use
+                }
+            }
+        }
+    }
+}
+
 private const val EXTENSION_CLASS = "Lapp/morphe/extension/jhc/JhcUpdateCheckPatch;"
 
 @Suppress("unused")
@@ -67,7 +63,6 @@ val JhcUpdateCheckPatchRes = resourcePatch(
         required = true,
         default = "j-hc/revanced-magisk-module"
     )
-    compatibleWith(*COMPAT)
 
     execute {
         document("res/values/strings.xml").use { document ->
@@ -89,17 +84,23 @@ val JhcUpdateCheckPatchRes = resourcePatch(
 val JhcUpdateCheckPatch = bytecodePatch(
     name = "j-hc Update Check",
     description = "j-hc/revanced-magisk-module update check",
-    default = true
+    default = false
 ) {
-    compatibleWith(*COMPAT)
+    dependsOn(FindLauncherActivityPatch)
     extendWith("extensions/jhc.mpe")
     execute {
-        val mainActivityOnCreateFingerprint = when (packageMetadata.packageName) {
-            "com.google.android.apps.youtube.music" -> MusicMainActivityOnCreateFingerprint
-            "com.google.android.apps.photos" -> PhotosMainActivityOnCreateFingerprint
-            else -> MainActivityOnCreateFingerprint
+        val method = MainActivityOnCreateFingerprint.matchOrNull()?.method ?: run {
+            var name = launcherActivityName
+                ?: throw PatchException("Launcher activity not found in manifest")
+            if (name.startsWith(".")) name = packageMetadata.packageName + name
+            Fingerprint(
+                definingClass = "L" + name.replace('.', '/') + ";",
+                name = "onCreate",
+                returnType = "V",
+                parameters = listOf("Landroid/os/Bundle;")
+            ).method
         }
-        mainActivityOnCreateFingerprint.method.addInstructions(
+        method.addInstructions(
             0,
             """
                 invoke-static/range { p0 .. p0 }, $EXTENSION_CLASS->checkUpdate(Landroid/content/Context;)V
