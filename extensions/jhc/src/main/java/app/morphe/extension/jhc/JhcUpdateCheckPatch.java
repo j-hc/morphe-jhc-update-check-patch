@@ -235,6 +235,11 @@ public class JhcUpdateCheckPatch {
                     return;
                 }
 
+                if (lastCheckedTag.equals(latestRelease.tagName)) {
+                    Log.i(TAG, "No matching release asset for " + packageName + " in latest release");
+                    return;
+                }
+
                 Log.i(TAG, "Latest matching " + latestRelease.tagName);
                 onLatestRelease.accept(new LatestRelease(
                         latestRelease.tagName,
