@@ -6,6 +6,8 @@ import app.morphe.patcher.patch.PatchException
 import app.morphe.patcher.patch.bytecodePatch
 import app.morphe.patcher.patch.resourcePatch
 import app.morphe.patcher.patch.stringOption
+import com.android.tools.smali.dexlib2.AccessFlags
+import com.android.tools.smali.dexlib2.iface.Method
 import org.w3c.dom.Element
 
 internal object MainActivityOnCreateFingerprint : Fingerprint(
@@ -24,18 +26,22 @@ private val FindLauncherActivityPatch = resourcePatch {
                 (0 until l.length).map { (l.item(it) as Element).getAttribute("android:name") }
             }
 
-            val nodes = doc.getElementsByTagName("activity")
-            for (i in 0 until nodes.length) {
-                val activity = nodes.item(i) as Element
-                val filters = activity.getElementsByTagName("intent-filter")
-                val isLauncher = (0 until filters.length).any {
-                    val f = filters.item(it) as Element
-                    "android.intent.action.MAIN" in f.names("action") &&
-                        "android.intent.category.LAUNCHER" in f.names("category")
-                }
-                if (isLauncher) {
-                    launcherActivityName = activity.getAttribute("android:name")
-                    return@use
+            for (tag in listOf("activity", "activity-alias")) {
+                val nodes = doc.getElementsByTagName(tag)
+                for (i in 0 until nodes.length) {
+                    val activity = nodes.item(i) as Element
+                    if (activity.getAttribute("android:enabled") == "false") continue
+                    val filters = activity.getElementsByTagName("intent-filter")
+                    val isLauncher = (0 until filters.length).any {
+                        val f = filters.item(it) as Element
+                        "android.intent.action.MAIN" in f.names("action") &&
+                                "android.intent.category.LAUNCHER" in f.names("category")
+                    }
+                    if (isLauncher) {
+                        launcherActivityName = activity.getAttribute("android:targetActivity")
+                            .ifEmpty { activity.getAttribute("android:name") }
+                        return@use
+                    }
                 }
             }
         }
@@ -68,14 +74,14 @@ val JhcUpdateCheckPatchRes = resourcePatch(
         document("res/values/strings.xml").use { document ->
             document.documentElement.appendChild(
                 document.createElement("string").apply {
-                setAttribute("name", "jhc_current_tag")
-                textContent = currentTag
-            })
+                    setAttribute("name", "jhc_current_tag")
+                    textContent = currentTag
+                })
             document.documentElement.appendChild(
                 document.createElement("string").apply {
-                setAttribute("name", "jhc_update_repo")
-                textContent = updateRepo
-            })
+                    setAttribute("name", "jhc_update_repo")
+                    textContent = updateRepo
+                })
         }
     }
 }
@@ -93,12 +99,23 @@ val JhcUpdateCheckPatch = bytecodePatch(
             var name = launcherActivityName
                 ?: throw PatchException("Launcher activity not found in manifest")
             if (name.startsWith(".")) name = packageMetadata.packageName + name
-            Fingerprint(
-                definingClass = "L" + name.replace('.', '/') + ";",
-                name = "onCreate",
-                returnType = "V",
-                parameters = listOf("Landroid/os/Bundle;")
-            ).method
+            val type = "L" + name.replace('.', '/') + ";"
+            val clazz = mutableClassDefBy(type)
+            val isBundleInit = { m: Method ->
+                m.returnType == "V" && m.parameterTypes.map { it.toString() } == listOf("Landroid/os/Bundle;")
+            }
+            clazz.methods.firstOrNull { it.name == "onCreate" && isBundleInit(it) }
+                ?: run {
+                    val abstractNames = mutableSetOf<String>()
+                    var parent = classDefByOrNull(clazz.superclass ?: "")
+                    while (parent != null) {
+                        parent.methods.filter { isBundleInit(it) && AccessFlags.ABSTRACT.isSet(it.accessFlags) }
+                            .forEach { abstractNames += it.name }
+                        parent = parent.superclass?.let { classDefByOrNull(it) }
+                    }
+                    clazz.methods.firstOrNull { it.name in abstractNames && isBundleInit(it) }
+                }
+                ?: throw PatchException("onCreate not found in $type")
         }
         method.addInstructions(
             0,
